@@ -1,0 +1,85 @@
+name: E2E Tests with Kind
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-e2e:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Create Kind Cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: kind
+          config: kind-config.yaml
+
+      - name: Build container image with Podman
+        run: |
+          # Define image name and tag
+          IMAGE_NAME="localhost/node-coverage-http:test"
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          
+          # Build the test image using Podman
+          podman build --target test -t $IMAGE_NAME .
+
+      - name: Load image into Kind cluster
+        run: |
+          podman image save -o built-image.tar ${{ env.IMAGE_NAME }}
+          kind load image-archive built-image.tar
+
+      - name: Deploy application
+        run: |
+          # Apply the Kubernetes deployment manifest
+          kubectl apply -f k8s-deployment.yaml
+          
+          # Wait for the deployment to be ready before running tests
+          kubectl wait --for=condition=Available deployment/coverage-demo-node \
+            -n coverage-demo-node --timeout=120s
+
+      - name: Run E2E Tests
+        run: |
+          # Run the E2E tests with coverage collection
+          node test/e2e.js
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage-output/cobertura-coverage.xml
+            coverage-output/report_e2e_tests.txt
+            coverage-output/html_e2e_tests/
+          retention-days: 30
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-output/cobertura-coverage.xml
+          flags: e2e-tests
+        # This step runs only on the main branch to avoid uploading reports from forks without a secret
+        if: github.repository == 'psturc/node-coverage-http'
+
+      - name: Display coverage summary
+        if: always()
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat coverage-output/report_e2e_tests.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+

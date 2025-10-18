@@ -1,0 +1,12 @@
+# Kind cluster configuration for testing
+# This exposes the application on localhost:9000 via Kind's extraPortMappings
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Map localhost:9000 to NodePort 30081 (Node.js app)
+  - containerPort: 30081
+    hostPort: 9000
+    protocol: TCP
+

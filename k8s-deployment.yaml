@@ -1,0 +1,61 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coverage-demo-node
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coverage-demo-node
+  namespace: coverage-demo-node
+  labels:
+    app: coverage-demo-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coverage-demo-node
+  template:
+    metadata:
+      labels:
+        app: coverage-demo-node
+    spec:
+      containers:
+      - name: app
+        image: localhost/node-coverage-http:test
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 9000
+          name: http
+          protocol: TCP
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coverage-demo-node
+  namespace: coverage-demo-node
+spec:
+  selector:
+    app: coverage-demo-node
+  ports:
+  - name: http
+    port: 9000
+    targetPort: 9000
+    nodePort: 30081  # Fixed port for Kind mapping (different from Python)
+  type: NodePort
+
